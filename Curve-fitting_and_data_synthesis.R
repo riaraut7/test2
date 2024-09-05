@@ -5,6 +5,13 @@ library(tidyverse)
 library(rTPC) 
 library(nls.multstart)
 
+#introducing: The June et al. 2004 function!!! Good for getting breadths and Atmax's >:)) 
+June_2004 <- function (temp, topt, omega, aopt) 
+{
+  p_t <- aopt*exp(-1*(temp-topt)/omega)^2 
+  return(p_t)
+}
+
 
 #load your data and separate it per curve 
 ATdata <- read.csv("AT_data.csv", stringsAsFactors = TRUE)
@@ -40,24 +47,23 @@ for (curve in cvID_mini) {
   Aumol_per_curve <- per_curve$A_umol_m2_s 
   #first you gotta check if your Assimilation values are in the right columns 
   if (is.na(Aumol_per_curve[[1]])) {
-    fit = list() 
     #just fitting the model: 
     mod = 'gaussian_1987'
     start_vals <- get_start_vals(per_curve$Tleaf_C, per_curve$A_other_units, model_name = 'gaussian_1987')
     low_lims <- get_lower_lims(per_curve$Tleaf_C, per_curve$A_other_units, model_name = 'gaussian_1987')
     upper_lims <- get_upper_lims(per_curve$Tleaf_C, per_curve$A_other_units, model_name = 'gaussian_1987')
     
-    fit_other <- nls_multstart(A_other_units~gaussian_1987(temp = Tleaf_C,rmax, topt,a),
-                         data = per_curve,
-                         iter = c(4,4,4),
-                         start_lower = start_vals - 10,
-                         start_upper = start_vals + 10,
-                         lower = low_lims,
-                         upper = upper_lims,
-                         supp_errors = 'Y')
+    fit <- nls_multstart(A_other_units~gaussian_1987(temp = Tleaf_C,rmax, topt,a),
+                               data = per_curve,
+                               iter = c(4,4,4),
+                               start_lower = start_vals - 10,
+                               start_upper = start_vals + 10,
+                               lower = low_lims,
+                               upper = upper_lims,
+                               supp_errors = 'Y')
     
-    fit_other
-    values_other <- calc_params(fit_other)
+    fit
+    values_other <- calc_params(fit)
     
     #if the model doesn't fit the data, just generate a graph with your plotted data. If it does,
     #then generate a graph with the fitted model. 
@@ -77,7 +83,7 @@ for (curve in cvID_mini) {
       #And finally, predicted a model and placing that over your raw data: 
       new_data <- data.frame(temp = seq(min(per_curve$Tleaf_C), max(per_curve$Tleaf_C), 0.5))
       preds <- augment(fit, newdata2 = new_data)
-      
+    
       p <- ggplot(per_curve, aes(Tleaf_C, A_other_units)) +
         geom_point() +
         geom_line(aes(x = Tleaf_C, y = .fitted), data = preds, col = 'darkgreen') +
@@ -88,11 +94,10 @@ for (curve in cvID_mini) {
       print(p) 
     }
     
-    cat(curve, ' is other units') 
+    #cat(curve, ' is other units') 
     
-#   next
+    #   next
   } else {
-    fit_other = list()
     #just fitting the model: 
     mod = 'gaussian_1987'
     start_vals <- get_start_vals(per_curve$Tleaf_C, per_curve$A_umol_m2_s, model_name = 'gaussian_1987')
@@ -107,13 +112,13 @@ for (curve in cvID_mini) {
                          lower = low_lims,
                          upper = upper_lims,
                          supp_errors = 'Y')
-      
+    
     fit
     values <- calc_params(fit)
-      
+    
     #if the model doesn't fit the data, just generate a graph with your plotted data. If it does,
     #then generate a graph with the fitted model. 
-      
+    
     if (is.na(values$e)) {
       #unmodelled_curves = bind_rows(unmodelled_curves,data.frame(species = per_curve$Taxon))
       p1 <- ggplot(per_curve, aes(Tleaf_C, A_umol_m2_s)) +
@@ -123,12 +128,12 @@ for (curve in cvID_mini) {
              y = 'Metabolic rate',
              title = 'Respiration across temperatures')
       print(p1)  
-  #   print ('model didnt fit!')
-     
-     } else {
-       #And finally, predicted a model and placing that over your raw data: 
-       new_data <- data.frame(temp = seq(min(per_curve$Tleaf_C), max(per_curve$Tleaf_C), 0.5))
-       preds <- augment(fit, newdata2 = new_data)
+      #   print ('model didnt fit!')
+      
+    } else {
+      #And finally, predicted a model and placing that over your raw data: 
+      new_data <- data.frame(temp = seq(min(per_curve$Tleaf_C), max(per_curve$Tleaf_C), 0.5))
+      preds <- augment(fit, newdata2 = new_data)
       
       p <- ggplot(per_curve, aes(Tleaf_C, A_umol_m2_s)) +
         geom_point() +
@@ -138,10 +143,11 @@ for (curve in cvID_mini) {
            y = 'Metabolic rate',
            title = 'Anet across temperatures')
       print(p) 
-        
-  data_out = bind_rows(data_out,data.frame(breadth = get_breadth_errorcatch(fit), breadth2 = get_breadth_errorcatch(fit_other)))
       
-     }
+  data_out = bind_rows(data_out,data.frame(breadth = get_breadth_errorcatch(fit), 
+                                           amax_1 = get_rmax(fit)))
+      
+    }
   }
   
 }
@@ -152,7 +158,6 @@ dev.off()
 gaussian_data <- data_out
 file_path <- "mini_gaus_ver_3.csv"
 write.csv(gaussian_data, file = file_path, row.names = FALSE)
-data_out
 
 
 
@@ -216,21 +221,21 @@ for (curve in cvID_mini) {
   #preliminary, seeing how your data looks in a graph: 
   per_curve <- ATdata_mini[ATdata_mini$curveID == curve,] 
   print(curve)
-
+  
   #quadratic_2008
   mod = 'quadratic_2008'
   start_vals <- get_start_vals(per_curve$Tleaf_C, per_curve$A_umol_m2_s, model_name = 'quadratic_2008')
   low_lims <- get_lower_lims(per_curve$Tleaf_C, per_curve$A_umol_m2_s, model_name = 'quadratic_2008')
   upper_lims <- get_upper_lims(per_curve$Tleaf_C, per_curve$A_umol_m2_s, model_name = 'quadratic_2008')
- 
+  
   fit1 <- nls_multstart(A_umol_m2_s~quadratic_2008(temp = Tleaf_C, a, b, c),
-                                     data = per_curve,
-                                     iter = c(4,4,4),
-                                     start_lower = start_vals - 10,
-                                     start_upper = start_vals + 10,
-                                     lower = low_lims,
-                                     upper = upper_lims,
-                                     supp_errors = 'Y')
+                        data = per_curve,
+                        iter = c(4,4,4),
+                        start_lower = start_vals - 10,
+                        start_upper = start_vals + 10,
+                        lower = low_lims,
+                        upper = upper_lims,
+                        supp_errors = 'Y')
   
   #briere2_1999
   mod = 'briere2_1999'
@@ -239,14 +244,14 @@ for (curve in cvID_mini) {
   upper_lims <- get_upper_lims(per_curve$Tleaf_C, per_curve$A_umol_m2_s, model_name = 'briere2_1999')
   
   fit2 <- nls_multstart(A_umol_m2_s~briere2_1999(temp = Tleaf_C, tmin, tmax, a, b),
-                                      data = per_curve,
-                                      iter = c(4,4,4,4),
-                                      start_lower = start_vals - 10,
-                                      start_upper = start_vals + 10,
-                                      lower = low_lims,
-                                      upper = upper_lims,
-                                      supp_errors = 'Y') 
-
+                        data = per_curve,
+                        iter = c(4,4,4,4),
+                        start_lower = start_vals - 10,
+                        start_upper = start_vals + 10,
+                        lower = low_lims,
+                        upper = upper_lims,
+                        supp_errors = 'Y') 
+  
   #Ratkowski 
   mod = 'ratkowsky_1983'
   start_vals <- get_start_vals(per_curve$Tleaf_C, per_curve$A_umol_m2_s, model_name = 'ratkowsky_1983')
@@ -254,21 +259,21 @@ for (curve in cvID_mini) {
   upper_lims <- get_upper_lims(per_curve$Tleaf_C, per_curve$A_umol_m2_s, model_name = 'ratkowsky_1983')
   
   fit3 <- nls_multstart(A_umol_m2_s~ratkowsky_1983(temp = Tleaf_C, tmin, tmax, a, b),
-                                      data = per_curve,
-                                      iter = c(4,4,4,4),
-                                      start_lower = start_vals - 10,
-                                      start_upper = start_vals + 10,
-                                      lower = low_lims,
-                                      upper = upper_lims,
-                                      supp_errors = 'Y') 
+                        data = per_curve,
+                        iter = c(4,4,4,4),
+                        start_lower = start_vals - 10,
+                        start_upper = start_vals + 10,
+                        lower = low_lims,
+                        upper = upper_lims,
+                        supp_errors = 'Y') 
   
   
   data_out_2 = bind_rows(data_out_2,
-                       data.frame(ctmin_quad = get_ctmin(fit1), ctmax_quad = get_ctmax(fit1), 
-                                  ctmin_brie = get_ctmin(fit2), ctmax_brie = get_ctmax(fit2), 
-                                  ctmin_ratk = get_ctmin(fit3), ctmax_ratk = get_ctmax(fit3)))  
-
-
+                         data.frame(ctmin_quad = get_ctmin(fit1), ctmax_quad = get_ctmax(fit1), 
+                                    ctmin_brie = get_ctmin(fit2), ctmax_brie = get_ctmax(fit2), 
+                                    ctmin_ratk = get_ctmin(fit3), ctmax_ratk = get_ctmax(fit3)))  
+  
+  
 } 
 dev.off()
 data_out_2 
