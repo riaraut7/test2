@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 
 #first load the important libraries (in the right order)
 library(broom)
